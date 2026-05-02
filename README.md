@@ -32,7 +32,7 @@ Configured submodules:
 Initialize submodules:
 
 ```bash
-git submodule update --init --recursive
+git submodule update --init --recursive --progress
 ```
 
 Validated build flow in this workspace:
@@ -95,7 +95,7 @@ git clone <repo-url> vnc_client_cpp
 cd vnc_client_cpp
 
 # 3. Populate submodules.
-git submodule update --init --recursive
+git submodule update --init --recursive --progress
 
 # 4. Configure.
 cmake -S . -B build -DVNC_USE_SUBMODULE_DEPS=ON
@@ -116,7 +116,7 @@ git clone <repo-url> vnc_client_cpp
 cd vnc_client_cpp
 
 # 3. Populate submodules.
-git submodule update --init --recursive
+git submodule update --init --recursive --progress
 
 # 4. Configure.
 #    If Homebrew Qt is not on the default CMake search path, provide the prefix:
@@ -129,6 +129,36 @@ cmake --build build -j
 
 # 6. Run.
 ./build/vnc-client
+```
+
+## Prebuilt binaries
+
+Every push to `main` triggers a GitHub Actions release workflow that builds and
+packages self-contained binaries for Linux and macOS.
+
+Download from the rolling release assets:
+
+- `https://github.com/dutta-alankar/vnc_client_cpp/releases/tag/rolling-main`
+
+Available assets:
+
+- `vnc-client-linux-<arch>.tar.gz`
+- `vnc-client-macos-<arch>.tar.gz`
+
+Run Linux bundle:
+
+```bash
+tar -xzf vnc-client-linux-*.tar.gz
+cd vnc-client-linux-*
+./run-vnc-client.sh
+```
+
+Run macOS bundle:
+
+```bash
+tar -xzf vnc-client-macos-*.tar.gz
+cd vnc-client-macos-*
+./run-vnc-client.sh
 ```
 
 ## Usage

@@ -1,0 +1,113 @@
+name: Release Binaries (Linux + macOS)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    name: Package on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init --progress external/libvncserver external/libssh
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config patchelf \
+            qt6-base-dev qt6-base-dev-tools \
+            libssl-dev libgnutls28-dev liblzo2-dev libjpeg-dev libsasl2-dev \
+            openssh-client
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake qt openssl@3 gnutls lzo jpeg-turbo cyrus-sasl
+          echo "QT_PREFIX=$(brew --prefix qt)" >> "$GITHUB_ENV"
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S . -B build -DVNC_USE_SUBMODULE_DEPS=ON
+
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cmake -S . -B build \
+            -DVNC_USE_SUBMODULE_DEPS=ON \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX"
+
+      - name: Build
+        run: |
+          cmake --build build -j
+
+      - name: Mark packaging scripts executable
+        run: |
+          chmod +x scripts/package-linux.sh scripts/package-macos.sh
+
+      - name: Package Linux bundle
+        if: runner.os == 'Linux'
+        run: |
+          ./scripts/package-linux.sh build dist
+
+      - name: Package macOS bundle
+        if: runner.os == 'macOS'
+        run: |
+          QT_PREFIX="$QT_PREFIX" ./scripts/package-macos.sh build dist
+
+      - name: Upload packaged bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ runner.os }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish-rolling-release:
+    name: Publish rolling release
+    runs-on: ubuntu-latest
+    needs: build-and-package
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: List assets
+        run: |
+          find release-assets -type f -name '*.tar.gz' -print
+
+      - name: Publish/Update rolling release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: rolling-main
+          name: Rolling binaries (main)
+          body: |
+            Automated binary bundles from the latest main branch push.
+
+            Assets:
+            - Linux tarball with launcher script (`run-vnc-client.sh`)
+            - macOS app bundle tarball with launcher script (`run-vnc-client.sh`)
+          prerelease: true
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: "release-assets/**/*.tar.gz"
+          token: ${{ secrets.GITHUB_TOKEN }}
