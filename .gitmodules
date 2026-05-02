@@ -1,0 +1,9 @@
+[submodule "external/libvncserver"]
+	path = external/libvncserver
+	url = https://github.com/LibVNC/libvncserver.git
+[submodule "external/qtbase"]
+	path = external/qtbase
+	url = https://github.com/qt/qtbase.git
+[submodule "external/libssh"]
+	path = external/libssh
+	url = https://git.libssh.org/projects/libssh.git
