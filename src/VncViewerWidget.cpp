@@ -87,7 +87,13 @@ void VncViewerWidget::mouseMoveEvent(QMouseEvent* event) {
     const QPoint pos = event->pos();
 #endif
     updateLocalCursorVisibility(pos);
-    emit pointerEvent(toRemotePos(pos).x(), toRemotePos(pos).y(), buttonMaskFromEvent(event->buttons()));
+    // Throttle move-only events to ~60fps to avoid flooding the server.
+    // Always send immediately when buttons are held (drag operations).
+    const bool buttonsHeld = event->buttons() != Qt::NoButton;
+    if (buttonsHeld || !m_pointerThrottle.isValid() || m_pointerThrottle.elapsed() >= 16) {
+        emit pointerEvent(toRemotePos(pos).x(), toRemotePos(pos).y(), buttonMaskFromEvent(event->buttons()));
+        m_pointerThrottle.restart();
+    }
 }
 
 void VncViewerWidget::wheelEvent(QWheelEvent* event) {

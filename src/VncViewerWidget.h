@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QImage>
 #include <QWidget>
 
@@ -44,4 +45,5 @@ private:
     VncClientSession* m_session = nullptr;
     QImage m_frame;
     QSize m_remoteSize;
+    QElapsedTimer m_pointerThrottle;
 };

@@ -215,7 +215,7 @@ void VncClientSession::runWorker(QString host, int port, QString password) {
     emitFrame();
 
     while (m_running && client) {
-        const int waitRes = WaitForMessage(client, 50);
+        const int waitRes = WaitForMessage(client, 5);
         if (waitRes < 0) {
             break;
         }
