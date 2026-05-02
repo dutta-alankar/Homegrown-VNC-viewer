@@ -110,6 +110,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_session, &VncClientSession::disconnected, this, &MainWindow::onConnectionClosed);
     connect(m_session, &VncClientSession::connected, this, [this]() {
         m_statusLabel->setText("Connected");
+        m_connectionElapsed.restart();
     });
 
     connect(m_viewer, &VncViewerWidget::pointerEvent, m_session, &VncClientSession::sendPointerEvent);
@@ -206,6 +207,7 @@ void MainWindow::connectSelected() {
         if (!m_tunnel->start(p.sshUser,
                      p.sshAuthMode,
                      p.sshPassword,
+                     QString(),
                      p.sshPrivateKeyPath,
                              p.gatewayHost,
                              p.gatewaySshPort,
@@ -236,6 +238,7 @@ void MainWindow::disconnectCurrent() {
     m_statusLabel->setText("Disconnected");
     m_activeProfileIndex = -1;
     m_thumbnailCapturedForSession = false;
+    m_connectionElapsed.invalidate();
 }
 
 void MainWindow::onConnectionClosed(const QString& reason) {
@@ -391,6 +394,10 @@ int MainWindow::pickFreeLocalPort() const {
 
 void MainWindow::onFrameUpdated(const QImage& image) {
     if (m_activeProfileIndex < 0 || m_activeProfileIndex >= m_profiles.size() || m_thumbnailCapturedForSession || image.isNull()) {
+        return;
+    }
+
+    if (!m_connectionElapsed.isValid() || m_connectionElapsed.elapsed() < 30000) {
         return;
     }
 

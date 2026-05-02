@@ -5,6 +5,14 @@
 #include <QFileInfo>
 #include <QProcessEnvironment>
 
+#include <chrono>
+#include <thread>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 SshTunnel::SshTunnel(QObject* parent)
     : QObject(parent) {}
 
@@ -15,6 +23,7 @@ SshTunnel::~SshTunnel() {
 bool SshTunnel::start(const QString& sshUser,
                       const QString& authMode,
                       const QString& sshPassword,
+                      const QString& sshOtp,
                       const QString& privateKeyPath,
                       const QString& gatewayHost,
                       int gatewayPort,
@@ -46,11 +55,12 @@ bool SshTunnel::start(const QString& sshUser,
             }
             return false;
         }
-        m_askpassScriptPath = createAskpassScript(sshPassword, error);
+        m_askpassScriptPath = createAskpassScript(sshPassword, sshOtp, error);
         if (m_askpassScriptPath.isEmpty()) {
             return false;
         }
         args << "-o" << "BatchMode=no"
+               << "-o" << "GSSAPIAuthentication=no"
              << "-o" << "PubkeyAuthentication=no"
              << "-o" << "PreferredAuthentications=password,keyboard-interactive";
         env.insert("SSH_ASKPASS", m_askpassScriptPath);
@@ -89,9 +99,18 @@ bool SshTunnel::start(const QString& sshUser,
         return false;
     }
 
+    if (!waitForLocalForward(localPort, error)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool SshTunnel::waitForLocalForward(int localPort, QString* error) {
     QElapsedTimer timer;
     timer.start();
-    while (timer.elapsed() < 3000) {
+
+    while (timer.elapsed() < 90000) {
         if (m_process.state() == QProcess::NotRunning) {
             if (error) {
                 const QString stderrText = QString::fromUtf8(m_process.readAllStandardError());
@@ -99,13 +118,31 @@ bool SshTunnel::start(const QString& sshUser,
             }
             return false;
         }
-        if (m_process.waitForReadyRead(100)) {
-            // Read and ignore any normal output while waiting for early errors.
-            m_process.readAllStandardOutput();
+
+        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd >= 0) {
+            sockaddr_in addr;
+            std::memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(static_cast<uint16_t>(localPort));
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+            const int connectRes = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+            ::close(fd);
+            if (connectRes == 0) {
+                return true;
+            }
         }
+
+        m_process.waitForReadyRead(100);
+        m_process.readAllStandardOutput();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    return m_process.state() == QProcess::Running;
+    if (error) {
+        *error = "Timed out waiting for SSH tunnel authentication/OTP completion.";
+    }
+    return false;
 }
 
 void SshTunnel::stop() {
@@ -127,7 +164,7 @@ bool SshTunnel::isRunning() const {
     return m_process.state() == QProcess::Running;
 }
 
-QString SshTunnel::createAskpassScript(const QString& password, QString* error) {
+QString SshTunnel::createAskpassScript(const QString& password, const QString& otp, QString* error) {
     QTemporaryFile tempFile;
     tempFile.setAutoRemove(false);
     if (!tempFile.open()) {
@@ -137,10 +174,64 @@ QString SshTunnel::createAskpassScript(const QString& password, QString* error) 
         return {};
     }
 
-    QByteArray escaped = password.toUtf8();
-    escaped.replace("\\", "\\\\");
-    escaped.replace("\"", "\\\"");
-    const QByteArray script = "#!/bin/sh\nprintf '%s' \"" + escaped + "\"\n";
+    // Use single-quoted shell strings and escape embedded single quotes.
+    // This prevents shell expansion of $, backticks, and other metacharacters.
+    QByteArray escapedPassword = password.toUtf8();
+    escapedPassword.replace("'", "'\"'\"'");
+    QByteArray escapedOtp = otp.toUtf8();
+    escapedOtp.replace("'", "'\"'\"'");
+
+    const QByteArray script =
+        "#!/bin/sh\n"
+        "prompt=\"$1\"\n"
+        "password='" + escapedPassword + "'\n"
+        "otp='" + escapedOtp + "'\n"
+        "case \"$prompt\" in\n"
+        "  *[Pp]assword*)\n"
+        "    printf '%s\\n' \"$password\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "esac\n"
+        "\n"
+        "# Optional pre-supplied OTP (kept for compatibility with future UI options).\n"
+        "if [ -n \"$otp\" ]; then\n"
+        "  printf '%s\\n' \"$otp\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "\n"
+        "# Challenge/response prompt (e.g., OTP) shown only when server asks for it.\n"
+        "if command -v osascript >/dev/null 2>&1; then\n"
+        "  response=$(osascript - \"$prompt\" <<'APPLESCRIPT'\n"
+        "on run argv\n"
+        "  set promptText to item 1 of argv\n"
+        "  try\n"
+        "    display dialog promptText default answer \"\" with title \"SSH Challenge\" with hidden answer buttons {\"Cancel\", \"OK\"} default button \"OK\"\n"
+        "    return text returned of result\n"
+        "  on error number -128\n"
+        "    return \"\"\n"
+        "  end try\n"
+        "end run\n"
+        "APPLESCRIPT\n"
+        "  )\n"
+        "  printf '%s\\n' \"$response\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "\n"
+        "if command -v zenity >/dev/null 2>&1; then\n"
+        "  response=$(zenity --password --title=\"SSH Challenge\" --text=\"$prompt\" 2>/dev/null || true)\n"
+        "  printf '%s\\n' \"$response\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "\n"
+        "# Last-resort fallback when no GUI prompt helper is available.\n"
+        "if [ -t 0 ]; then\n"
+        "  printf '%s ' \"$prompt\" >&2\n"
+        "  IFS= read -r response || response=\"\"\n"
+        "  printf '%s\\n' \"$response\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "\n"
+        "printf '\\n'\n";
     if (tempFile.write(script) != script.size()) {
         if (error) {
             *error = "Unable to write temporary askpass script.";

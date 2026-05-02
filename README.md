@@ -175,7 +175,7 @@ cd vnc-client-macos-*
 5. Use the search box to filter profiles.
 6. Select a profile and click `Connect`.
 
-Thumbnail previews are captured from the first received framebuffer of each connected session and persisted with the profile.
+Thumbnail previews are captured from the framebuffer received after 30 second of a successfully connected session and persisted with the profile.
 
 ## Data storage
 

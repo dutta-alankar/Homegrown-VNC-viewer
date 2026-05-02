@@ -14,6 +14,7 @@ public:
     bool start(const QString& sshUser,
                const QString& authMode,
                const QString& sshPassword,
+               const QString& sshOtp,
                const QString& privateKeyPath,
                const QString& gatewayHost,
                int gatewayPort,
@@ -26,7 +27,8 @@ public:
     bool isRunning() const;
 
 private:
-    QString createAskpassScript(const QString& password, QString* error);
+    QString createAskpassScript(const QString& password, const QString& otp, QString* error);
+    bool waitForLocalForward(int localPort, QString* error);
 
     QProcess m_process;
     QString m_askpassScriptPath;

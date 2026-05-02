@@ -11,7 +11,7 @@ Expected submodules:
 Initialize all submodules:
 
 ```bash
-git submodule update --init --recursive --progress
+git submodule update --init --recursive
 ```
 
 Notes:

@@ -125,9 +125,8 @@ rfbBool VncClientSession::onMallocFrameBuffer(rfbClient* client) {
     }
     std::memset(newBuffer, 0, size);
 
-    if (client->frameBuffer) {
-        std::free(client->frameBuffer);
-    }
+    // Do not free client->frameBuffer here: ownership may not always be ours,
+    // and freeing an unowned pointer can crash with malloc/free errors.
     client->frameBuffer = newBuffer;
 
     emit self->framebufferResized(QSize(client->width, client->height));
@@ -203,7 +202,8 @@ void VncClientSession::runWorker(QString host, int port, QString password) {
 
     if (!rfbInitClient(client, nullptr, nullptr)) {
         emit disconnected("Connection failed. Check host/port/password and server reachability.");
-        rfbClientCleanup(client);
+        // rfbInitClient may already perform internal cleanup on failure.
+        // Calling rfbClientCleanup again here can double-free in that path.
         std::lock_guard<std::mutex> lock(m_clientMutex);
         m_client = nullptr;
         m_running = false;

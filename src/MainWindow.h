@@ -3,6 +3,7 @@
 #include "ConnectionProfile.h"
 
 #include <QMainWindow>
+#include <QElapsedTimer>
 
 class QListWidget;
 class QPushButton;
@@ -48,6 +49,7 @@ private:
     QList<int> m_visibleProfileIndices;
     int m_activeProfileIndex = -1;
     bool m_thumbnailCapturedForSession = false;
+    QElapsedTimer m_connectionElapsed;
 
     QListWidget* m_profileList = nullptr;
     QLineEdit* m_searchEdit = nullptr;
