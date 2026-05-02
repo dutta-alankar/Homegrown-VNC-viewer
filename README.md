@@ -1,4 +1,4 @@
-# vnc-client
+# Homegrown VNC viewer
 
 ![vnc-client logo](src/logo.png)
 
