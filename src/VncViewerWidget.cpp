@@ -1,8 +1,12 @@
 #include "VncViewerWidget.h"
 
+#include <algorithm>
+
+#include <QEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QWheelEvent>
 
 extern "C" {
 #include <rfb/keysym.h>
@@ -42,12 +46,18 @@ void VncViewerWidget::paintEvent(QPaintEvent*) {
         return;
     }
 
-    p.drawImage(rect(), m_frame);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    p.drawImage(displayRect(), m_frame);
 }
 
 void VncViewerWidget::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     update();
+}
+
+void VncViewerWidget::leaveEvent(QEvent* event) {
+    QWidget::leaveEvent(event);
+    unsetCursor();
 }
 
 void VncViewerWidget::mousePressEvent(QMouseEvent* event) {
@@ -56,6 +66,7 @@ void VncViewerWidget::mousePressEvent(QMouseEvent* event) {
 #else
     const QPoint pos = event->pos();
 #endif
+    updateLocalCursorVisibility(pos);
     emit pointerEvent(toRemotePos(pos).x(), toRemotePos(pos).y(), buttonMaskFromEvent(event->buttons()));
 }
 
@@ -65,6 +76,7 @@ void VncViewerWidget::mouseReleaseEvent(QMouseEvent* event) {
 #else
     const QPoint pos = event->pos();
 #endif
+    updateLocalCursorVisibility(pos);
     emit pointerEvent(toRemotePos(pos).x(), toRemotePos(pos).y(), buttonMaskFromEvent(event->buttons()));
 }
 
@@ -74,7 +86,39 @@ void VncViewerWidget::mouseMoveEvent(QMouseEvent* event) {
 #else
     const QPoint pos = event->pos();
 #endif
+    updateLocalCursorVisibility(pos);
     emit pointerEvent(toRemotePos(pos).x(), toRemotePos(pos).y(), buttonMaskFromEvent(event->buttons()));
+}
+
+void VncViewerWidget::wheelEvent(QWheelEvent* event) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const QPoint pos = event->position().toPoint();
+#else
+    const QPoint pos = event->pos();
+#endif
+    updateLocalCursorVisibility(pos);
+
+    const QPoint remotePos = toRemotePos(pos);
+    const int baseMask = buttonMaskFromEvent(event->buttons());
+    const QPoint delta = event->angleDelta();
+
+    if (delta.y() > 0) {
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 8);
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
+    } else if (delta.y() < 0) {
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 16);
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
+    }
+
+    if (delta.x() > 0) {
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 32);
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
+    } else if (delta.x() < 0) {
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 64);
+        emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
+    }
+
+    event->accept();
 }
 
 void VncViewerWidget::keyPressEvent(QKeyEvent* event) {
@@ -91,13 +135,40 @@ void VncViewerWidget::keyReleaseEvent(QKeyEvent* event) {
     }
 }
 
+QRect VncViewerWidget::displayRect() const {
+    if (m_frame.isNull()) {
+        return rect();
+    }
+
+    QSize scaled = m_frame.size();
+    scaled.scale(size(), Qt::KeepAspectRatio);
+    return QRect((width() - scaled.width()) / 2,
+                 (height() - scaled.height()) / 2,
+                 scaled.width(),
+                 scaled.height());
+}
+
+void VncViewerWidget::updateLocalCursorVisibility(const QPoint& localPos) {
+    if (!m_frame.isNull() && displayRect().contains(localPos)) {
+        setCursor(Qt::BlankCursor);
+    } else {
+        unsetCursor();
+    }
+}
+
 QPoint VncViewerWidget::toRemotePos(const QPoint& localPos) const {
     if (!m_remoteSize.isValid() || width() <= 0 || height() <= 0) {
         return localPos;
     }
 
-    const int x = qBound(0, localPos.x() * m_remoteSize.width() / width(), m_remoteSize.width() - 1);
-    const int y = qBound(0, localPos.y() * m_remoteSize.height() / height(), m_remoteSize.height() - 1);
+    const QRect target = displayRect();
+    const int clampedX = qBound(target.left(), localPos.x(), target.right());
+    const int clampedY = qBound(target.top(), localPos.y(), target.bottom());
+    const int relX = clampedX - target.left();
+    const int relY = clampedY - target.top();
+
+    const int x = qBound(0, relX * m_remoteSize.width() / std::max(1, target.width()), m_remoteSize.width() - 1);
+    const int y = qBound(0, relY * m_remoteSize.height() / std::max(1, target.height()), m_remoteSize.height() - 1);
     return {x, y};
 }
 

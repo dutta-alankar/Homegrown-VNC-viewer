@@ -38,6 +38,7 @@ signals:
 private:
     static rfbBool onMallocFrameBuffer(rfbClient* client);
     static void onGotFrameBufferUpdate(rfbClient* client, int x, int y, int w, int h);
+    static void onFinishedFrameBufferUpdate(rfbClient* client);
     static void onGotXCutText(rfbClient* client, const char* text, int len);
     static char* onGetPassword(rfbClient* client);
 
