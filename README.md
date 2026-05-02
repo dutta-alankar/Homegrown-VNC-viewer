@@ -140,7 +140,7 @@ packages self-contained binaries for Linux and macOS.
 
 Download from the rolling release assets:
 
-- `https://github.com/dutta-alankar/vnc_client_cpp/releases/tag/rolling-main`
+- `https://github.com/dutta-alankar/Homegrown-VNC-viewer/releases/tag/rolling-main`
 
 Available assets:
 
