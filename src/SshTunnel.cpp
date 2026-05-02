@@ -6,6 +6,7 @@
 #include <QProcessEnvironment>
 
 #include <chrono>
+#include <cstring>
 #include <thread>
 
 #include <arpa/inet.h>
