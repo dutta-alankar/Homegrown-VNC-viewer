@@ -9,6 +9,9 @@ set(CMAKE_AUTOUIC ON)
 
 option(VNC_USE_SUBMODULE_DEPS "Prefer dependencies from git submodules under external/" ON)
 
+# Project-local cmake module overrides (e.g. FindWrapOpenGL without defunct AGL on macOS 26+).
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
 if (VNC_USE_SUBMODULE_DEPS)
     if (EXISTS ${CMAKE_SOURCE_DIR}/external/qtbase/lib/cmake/Qt6)
         list(PREPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/external/qtbase)
@@ -21,6 +24,35 @@ if (Qt6_FOUND)
 else()
     find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
     set(QT_PACKAGE Qt5)
+endif()
+
+# macOS 26 (Tahoe) removed AGL but its stub still exists, causing ld to fail.
+# cmake/FindWrapOpenGL.cmake (project-local) prevents the WrapOpenGL target from
+# adding AGL. As a belt-and-suspenders measure, patch Qt's prl files at configure
+# time (idempotent) and strip AGL from all relevant imported target interfaces.
+if (APPLE AND Qt6_FOUND)
+    get_filename_component(_qt_lib_dir "${Qt6_DIR}/../../.." ABSOLUTE)
+    foreach(_fw QtGui QtWidgets)
+        set(_prl "${_qt_lib_dir}/${_fw}.framework/Versions/A/Resources/${_fw}.prl")
+        if (EXISTS "${_prl}")
+            file(READ "${_prl}" _prl_content)
+            if (_prl_content MATCHES "-framework AGL")
+                string(REPLACE " -framework AGL" "" _prl_content "${_prl_content}")
+                string(REPLACE ";-framework AGL" "" _prl_content "${_prl_content}")
+                file(WRITE "${_prl}" "${_prl_content}")
+                message(STATUS "Patched ${_prl}: removed defunct -framework AGL (macOS 26+)")
+            endif()
+        endif()
+    endforeach()
+    foreach(_tgt WrapOpenGL::WrapOpenGL Qt6::Gui Qt6::Widgets Qt6::Core)
+        if (TARGET ${_tgt})
+            get_target_property(_libs ${_tgt} INTERFACE_LINK_LIBRARIES)
+            if (_libs)
+                list(FILTER _libs EXCLUDE REGEX "AGL")
+                set_property(TARGET ${_tgt} PROPERTY INTERFACE_LINK_LIBRARIES "${_libs}")
+            endif()
+        endif()
+    endforeach()
 endif()
 
 set(VNC_CLIENT_TARGET "")

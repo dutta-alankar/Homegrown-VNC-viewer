@@ -43,33 +43,91 @@ Validated build flow in this workspace:
 
 If submodules are unavailable, CMake falls back to system-installed packages where possible.
 
-## Build prerequisites
+## Prerequisites
 
-### Option A: build with system packages (quickest)
+### Linux (Debian / Ubuntu)
 
-Debian/Ubuntu example:
+The default build compiles `libvncserver` from the bundled submodule, so its
+development dependencies must be present instead of a pre-built `libvncclient`:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential cmake pkg-config qt6-base-dev libvncclient-dev openssh-client
+sudo apt install -y \
+  build-essential cmake pkg-config \
+  qt6-base-dev \
+  libssl-dev libgnutls28-dev liblzo2-dev libjpeg-dev libsasl2-dev \
+  openssh-client
 ```
 
-### Option B: use checked-out submodules
+> **Qt5 fallback:** Replace `qt6-base-dev` with `qtbase5-dev` on older
+> distributions — the build system auto-detects which version is available.
 
-1. Initialize submodules.
-2. Build/provide Qt in a way discoverable by CMake (for example via `CMAKE_PREFIX_PATH`).
-3. CMake will automatically use `external/libvncserver` when present.
+> **System libvncclient alternative:** Pass `-DVNC_USE_SUBMODULE_DEPS=OFF` to
+> CMake and install `libvncclient-dev` instead of the individual dev libraries
+> above.
 
-## Configure and compile
+### macOS (Homebrew)
 
 ```bash
+brew install cmake qt openssl@3 gnutls lzo jpeg-turbo cyrus-sasl
+```
+
+`ssh` is provided by macOS itself and does not need to be installed separately.
+
+> **macOS 26 (Tahoe) note:** Apple removed the AGL OpenGL framework in macOS 26
+> but left a non-functional stub on disk, which causes the linker to fail when
+> building against Homebrew Qt.  This repository ships a project-local
+> `cmake/FindWrapOpenGL.cmake` that shadows Qt's copy and omits the AGL
+> reference.  Additionally, `CMakeLists.txt` patches the relevant Qt `.prl` files
+> at configure time (idempotently) so the fix survives a `brew upgrade qt`.
+> No manual action is required.
+
+## Build
+
+The configure and build commands are identical on both platforms.
+
+### Linux — step by step
+
+```bash
+# 1. Install prerequisites (see above).
+# 2. Clone and enter the repository.
+git clone <repo-url> vnc_client_cpp
+cd vnc_client_cpp
+
+# 3. Populate submodules.
+git submodule update --init --recursive
+
+# 4. Configure.
 cmake -S . -B build -DVNC_USE_SUBMODULE_DEPS=ON
+
+# 5. Build.
 cmake --build build -j
+
+# 6. Run.
+./build/vnc-client
 ```
 
-## Run
+### macOS — step by step
 
 ```bash
+# 1. Install prerequisites (see above).
+# 2. Clone and enter the repository.
+git clone <repo-url> vnc_client_cpp
+cd vnc_client_cpp
+
+# 3. Populate submodules.
+git submodule update --init --recursive
+
+# 4. Configure.
+#    If Homebrew Qt is not on the default CMake search path, provide the prefix:
+#      cmake -S . -B build -DVNC_USE_SUBMODULE_DEPS=ON \
+#            -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
+cmake -S . -B build -DVNC_USE_SUBMODULE_DEPS=ON
+
+# 5. Build.
+cmake --build build -j
+
+# 6. Run.
 ./build/vnc-client
 ```
 

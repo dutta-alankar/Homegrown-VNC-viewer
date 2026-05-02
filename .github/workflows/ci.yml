@@ -1,0 +1,57 @@
+name: Build (Linux + macOS)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init --progress external/libvncserver external/libssh
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config \
+            qt6-base-dev \
+            libssl-dev libgnutls28-dev liblzo2-dev libjpeg-dev libsasl2-dev \
+            openssh-client
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake qt openssl@3 gnutls lzo jpeg-turbo cyrus-sasl
+          echo "QT_PREFIX=$(brew --prefix qt)" >> "$GITHUB_ENV"
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S . -B build -DVNC_USE_SUBMODULE_DEPS=ON
+
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cmake -S . -B build \
+            -DVNC_USE_SUBMODULE_DEPS=ON \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX"
+
+      - name: Build
+        run: |
+          cmake --build build -j
