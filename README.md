@@ -1,5 +1,7 @@
 # vnc-client
 
+![vnc-client logo](src/logo.png)
+
 `vnc-client` is a C++ desktop VNC viewer built with CMake.
 
 It provides:

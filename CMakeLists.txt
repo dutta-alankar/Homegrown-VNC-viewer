@@ -96,6 +96,7 @@ endif()
 
 add_executable(vnc-client
     src/main.cpp
+    src/resources.qrc
     src/ConnectionProfile.h
     src/ConnectionStore.h
     src/ConnectionStore.cpp
