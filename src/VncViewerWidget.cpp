@@ -108,20 +108,31 @@ void VncViewerWidget::wheelEvent(QWheelEvent* event) {
     const int baseMask = buttonMaskFromEvent(event->buttons());
     const QPoint delta = event->angleDelta();
 
-    if (delta.y() > 0) {
+    // Accumulate delta and fire one scroll click per 120 units (one notch).
+    // This normalises smooth trackpad scrolling so it isn't too fast.
+    static constexpr int kNotch = 120;
+    m_scrollAccumY += delta.y();
+    while (m_scrollAccumY >= kNotch) {
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 8);
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
-    } else if (delta.y() < 0) {
+        m_scrollAccumY -= kNotch;
+    }
+    while (m_scrollAccumY <= -kNotch) {
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 16);
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
+        m_scrollAccumY += kNotch;
     }
 
-    if (delta.x() > 0) {
+    m_scrollAccumX += delta.x();
+    while (m_scrollAccumX >= kNotch) {
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 32);
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
-    } else if (delta.x() < 0) {
+        m_scrollAccumX -= kNotch;
+    }
+    while (m_scrollAccumX <= -kNotch) {
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask | 64);
         emit pointerEvent(remotePos.x(), remotePos.y(), baseMask);
+        m_scrollAccumX += kNotch;
     }
 
     event->accept();

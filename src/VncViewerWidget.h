@@ -46,4 +46,6 @@ private:
     QImage m_frame;
     QSize m_remoteSize;
     QElapsedTimer m_pointerThrottle;
+    int m_scrollAccumX = 0;
+    int m_scrollAccumY = 0;
 };
